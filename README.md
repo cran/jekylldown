@@ -1,0 +1,364 @@
+
+<!-- README.md is generated from README.Rmd. Please edit that file. -->
+
+# jekylldown
+
+<!-- badges: start -->
+
+[![R-CMD-check](https://github.com/allanvc/jekylldown/actions/workflows/R-CMD-check.yml/badge.svg)](https://github.com/allanvc/jekylldown/actions/workflows/R-CMD-check.yml)
+<!-- badges: end -->
+
+**jekylldown** does for [Jekyll](https://jekyllrb.com) what
+[blogdown](https://pkgs.rstudio.com/blogdown/) does for Hugo: create,
+build, preview, customize, migrate and publish Jekyll websites entirely
+from R, writing posts in R Markdown or [Quarto](https://quarto.org).
+
+The main benefits:
+
+  - **The Jekyll theme ecosystem.** First-class support for
+    [al-folio](https://github.com/alshedivat/al-folio), the reference
+    theme for academic sites: publications are generated from BibTeX and
+    DOIs, and the CV, teaching and news pages are structured data.
+    [Chirpy](https://github.com/cotes2020/jekyll-theme-chirpy), [Minimal
+    Mistakes](https://github.com/mmistakes/minimal-mistakes) and minima
+    are also supported, and any other gem-based theme works with the
+    same pipeline.
+  - **You publish sources, not build artifacts.** GitHub Pages runs
+    Jekyll natively and the bundled deploy workflows build the site in
+    101. The repository holds sources only: there is no `public/` or
+         `_site/` folder to commit and no rendered HTML to keep in sync.
+         Publishing is a `git push`.
+  - **Nothing between R and Jekyll to break.** Posts are knitted to
+    plain Markdown, which Jekyll consumes directly; front matter,
+    figures and tables are handled. Jekyll runs strictly through its
+    command line, so there is no R-Ruby bridge and no version coupling.
+  - **A complete toolchain from R, on every platform.** `install_ruby()`
+    and `install_git()` set up an isolated toolchain, with no admin
+    rights and nothing installed system-wide. The entire workflow runs
+    on Linux and Windows CI on every push.
+  - **Migration from blogdown in one function call.** `migrate_hugo()`
+    converts posts, page bundles, shortcodes, menu pages, site identity,
+    social profiles and publications, and reports what needs manual
+    attention. It has been validated page by page against real blogdown
+    sites, including one with 1,884 posts.
+  - **Customization as code.** Colors, fonts, semantic elements and
+    free-form CSS are set through idempotent, dark-mode-aware functions
+    (`set_theme_style()`, `set_theme_font()`, `set_element_style()`,
+    `add_css()`) instead of edits to theme files.
+  - **A quiet writing loop.** `serve_site()` runs in a background
+    process and rebuilds incrementally on save. The console stays free.
+
+## Installation
+
+jekylldown is not on CRAN yet. Install the development version with:
+
+``` r
+# install.packages("remotes")
+remotes::install_github("allanvc/jekylldown")
+```
+
+## Getting Jekyll running
+
+jekylldown needs Ruby (\>= 3.0) with the **jekyll** and **bundler**
+gems. Run `jekylldown::check()` at any time for a diagnostic of what is
+(and is not) installed -- it looks both on your `PATH` and in
+jekylldown's own isolated toolchain directory
+(`tools::R_user_dir("jekylldown", "data")`).
+
+> **No Ruby? You can still publish.** Knitting `.Rmd` posts only needs
+> R. If you deploy on GitHub Pages/Actions (al-folio and Chirpy ship the
+> workflow), the Jekyll build happens remotely and a local Jekyll is
+> only needed for `serve_site()` previews and local `build_site()`
+> builds.
+
+To write posts in Quarto (`.qmd`) you also need the Quarto CLI --
+`install_quarto()` puts it in the same isolated toolchain directory, or
+it is picked up from the `PATH`.
+
+### Windows
+
+One function call -- no admin rights, no graphical installer, nothing on
+the system `PATH`:
+
+``` r
+install.packages("archive")   # unpacks the portable Ruby archive
+jekylldown::install_ruby()
+```
+
+It downloads the portable [RubyInstaller](https://rubyinstaller.org)
+archive into jekylldown's isolated toolchain directory, adds the MSYS2
+build tools (Jekyll's own dependencies need a compiler on Windows -- a
+large but one-time download) and installs the jekyll and bundler gems
+there; deleting that one directory uninstalls everything. On networks
+where the GitHub API is blocked, a known-good pinned release is fetched
+directly from `github.com`; fully offline, download the `.7z` from
+[rubyinstaller.org](https://rubyinstaller.org/downloads/) and pass it as
+`file =`. git is not required either: the GitHub-hosted theme templates
+(al-folio, Chirpy) fall back to a plain archive download when git is
+absent. The one step that needs git -- al-folio's `bundle_install()`,
+whose `Gemfile` pulls a gem from a git repository -- is covered by
+`install_git()`, which drops a portable MinGit into the same isolated
+toolchain (for publishing with `git push` you will still want a regular
+[git installation](https://git-scm.com/downloads/)). The whole workflow
+-- `install_ruby()`, `new_site()`, `build_site()`, `serve_site()` --
+runs on a Windows GitHub Actions runner on every push.
+
+**Performance tip**: Jekyll is markedly slower on Windows, mostly
+because real-time antivirus scanning intercepts every build's thousands
+of small file reads. Excluding the site folder and the toolchain
+directory from real-time scanning (Windows Security \> Exclusions) makes
+the single biggest difference; `serve_site()` also rebuilds
+incrementally for content-only edits.
+
+### Linux
+
+With admin rights (Debian/Ubuntu shown):
+
+``` sh
+sudo apt install ruby-full build-essential
+gem install --user-install jekyll bundler minima
+```
+
+Without admin rights, use the fully isolated toolchain (conda-forge Ruby
+via micromamba, installed under jekylldown's data directory -- deleting
+that one directory uninstalls everything):
+
+``` sh
+DATA=$(Rscript -e 'cat(tools::R_user_dir("jekylldown", "data"))')
+mkdir -p "$DATA"
+curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest \
+  | tar -xj -C "$DATA" bin/micromamba
+"$DATA/bin/micromamba" create -y -p "$DATA/ruby" \
+  -c conda-forge ruby c-compiler cxx-compiler make
+PATH="$DATA/ruby/bin:$PATH" gem install --no-document jekyll bundler minima
+```
+
+jekylldown auto-detects a toolchain in that directory and injects
+`GEM_HOME`/`PATH` on every call -- no shell configuration needed.
+
+### macOS
+
+The system Ruby that ships with macOS is outdated; install a current one
+with [Homebrew](https://brew.sh) (you also need the Xcode Command Line
+Tools for gems with native extensions):
+
+``` sh
+xcode-select --install   # if not already installed
+brew install ruby
+echo 'export PATH="$(brew --prefix ruby)/bin:$PATH"' >> ~/.zshrc && exec zsh
+gem install --user-install jekyll bundler minima
+```
+
+### Windows without the isolated toolchain
+
+Prefer a regular, system-wide Ruby to `install_ruby()`'s private copy?
+Install [RubyInstaller **with
+Devkit**](https://rubyinstaller.org/downloads/) (the Devkit brings the
+MSYS2 toolchain that compiles native gems), tick *"Add Ruby executables
+to your PATH"* during setup and run the final `ridk install` step it
+offers. Then, in a new terminal:
+
+``` sh
+gem install jekyll bundler minima
+```
+
+jekylldown uses whatever it finds on the `PATH` when nothing is
+provisioned in its own toolchain directory.
+
+### Verify
+
+``` r
+jekylldown::check()
+```
+
+## Every theme, on every platform
+
+The R commands are identical on Windows, Linux and macOS -- only the
+one-time setup above differs per system. What changes per theme is one
+extra step: themes that ship their own `Gemfile` need `bundle_install()`
+once before the first build.
+
+| Theme            | Create                                            | One-time extra step                                                    |
+| ---------------- | ------------------------------------------------- | ---------------------------------------------------------------------- |
+| minima (default) | `new_site("my-site")`                             | none -- the theme gem is installed with the toolchain                  |
+| al-folio         | `new_site("my-site", theme = "al-folio")`         | `bundle_install("my-site")` -- needs git (on Windows, `install_git()`) |
+| Chirpy           | `new_site("my-site", theme = "chirpy")`           | `bundle_install("my-site")`                                            |
+| Minimal Mistakes | `new_site("my-site", theme = "minimal-mistakes")` | `bundle_install("my-site")`                                            |
+
+From there the loop is the same everywhere and for every theme:
+`new_post("My title", dir = "my-site")`, write, `serve_site("my-site")`
+for the live preview (or `build_site()`), and publish (see *Publishing*
+below).
+
+**Any other Jekyll theme** works with the same pipeline: start from
+`new_site("my-site")`, put the theme's gem in the `Gemfile` and in the
+`theme:` line of `_config.yml` in place of `minima`, and run
+`bundle_install("my-site")`. Posts in R Markdown/Quarto, `new_post()`,
+`build_site()` and `serve_site()` work unchanged with any theme; the
+theme-aware helpers (`set_theme_style()` palettes, `set_theme_skin()`,
+the `set_element_style()` element maps, `migrate_hugo()` scaffolding)
+are built for the four first-class themes above. Themes distributed only
+as `remote_theme` for GitHub Pages have no local gem to build with: knit
+with `build_site(local_jekyll = FALSE)` and let GitHub Pages run Jekyll
+remotely.
+
+## Minimal example
+
+``` r
+library(jekylldown)
+
+new_site("mysite")                        # scaffold a Jekyll site
+new_post("My first post", dir = "mysite") # creates _source/YYYY-MM-DD-my-first-post.Rmd
+build_site("mysite")                      # knit .Rmd -> .md, then `jekyll build`
+serve_site("mysite")                      # live preview with rebuild on save
+stop_server("mysite")
+```
+
+`new_site()` also scaffolds `theme = "al-folio"`, `"chirpy"` or
+`"minimal-mistakes"`. Posts come in three flavors: R Markdown via plain
+knitr (default), R Markdown via pandoc (`knit_method: pandoc` in the
+front matter -- enables citations, footnotes, cross-references), and
+Quarto (`new_post(format = "qmd")`).
+
+For a theme with its own `Gemfile` (like al-folio), install its gems
+once with `bundle_install("mysite")`; `build_site()`/`serve_site()` then
+switch to `bundle exec jekyll` automatically.
+
+## Customizing the theme
+
+Declarative, idempotent, dark-mode aware -- no hand-written CSS in theme
+files. Four layers, most robust first:
+
+``` r
+# every helper takes the site via dir: its root, or any directory
+# inside it (they climb to the site root like build_site() does)
+site <- "mysite"
+
+# 1. the theme's own CSS variables (al-folio and Chirpy)
+set_theme_style(accent = "red",
+                background = c(light = "#fffdf7", dark = "#1c1c1d"),
+                dir = site)
+
+# Minimal Mistakes styles through compiled skins instead:
+set_theme_skin("dark", dir = site)
+
+# 2. fonts (Google Fonts inlined) and base size
+set_theme_font("Lora", size = "17px", dir = site)
+
+# 3. one semantic element at a time (the fragile layer -- see its docs)
+set_element_style("navbar", background = "#222", color = "white",
+                  dir = site)
+set_element_style("socials", size = "2rem", dir = site)   # social icon row
+
+# 4. escape hatch: free-form CSS in a managed, removable block
+add_css(".profile img { border-radius: 50%; }", id = "avatar", dir = site)
+
+# footer credit ("Built from R with jekylldown X.Y.Z."), added by
+# new_site() and version-refreshed by build_site()
+add_footer_credit(site)     # remove_footer_credit(site) undoes it
+
+# Atom feeds from a site-level copy of jekyll-feed's template. On
+# al-folio the feed title becomes your name instead of the literal word
+# "blank"; new_site() does this already. Per-category feeds work on any
+# theme.
+add_feed(category = "R", dir = site)   # feed/R.xml: the R posts, full text
+
+# R-Bloggers in one call: the R-only feed, the link back to R-Bloggers
+# on the blog page, and the feed URL to submit
+use_r_bloggers(dir = site)
+```
+
+To undo the accent, call `set_theme_color(NULL, dir = site)`; deleting
+the site-local stylesheet (`assets/css/main.scss`) drops every
+customization at once.
+
+## Migrating from blogdown/Hugo
+
+``` r
+migrate_hugo("path/to/hugo-site", "my-jekyll-site", theme = "al-folio")
+```
+
+`migrate_hugo()` converts posts (front matter, filenames, bundles,
+static assets, common shortcodes), pages from the Hugo menu, the site
+identity, social profiles and -- with `publications = "bib"` (the
+default on al-folio) -- a publications page rebuilt from its DOIs, then
+reports everything that needs manual attention. All four themes are
+migration targets; each gets the pages, navigation, avatar and socials
+in its own convention. See the vignette:
+`vignette("migrate-blogdown-to-al-folio", package = "jekylldown")`.
+
+## Publishing
+
+`build_site()` leaves a plain static site in `_site/` -- so ultimately
+*any* static host works. The knitting always happens locally (commit
+`_source/` **and** the generated `_posts/*.md`); what varies is who runs
+`jekyll build`.
+
+**GitHub Pages** (free, and Jekyll-native):
+
+1.  Push the site to a repository -- `youruser.github.io` for a user
+    site, any name for a project site.
+2.  Get a build workflow. al-folio and Chirpy already ship one; for
+    minima, Minimal Mistakes and other themes, add the standard one:
+
+<!-- end list -->
+
+``` r
+use_pages_workflow("mysite")   # writes .github/workflows/jekyll.yml
+```
+
+3.  Point Pages at the right source (once, in the repository settings)
+    -- **the two bundled workflows publish differently**:
+      - Chirpy's workflow and `use_pages_workflow()`'s use the official
+        Pages actions: set **Pages \> Source: GitHub Actions**.
+      - al-folio's workflow pushes the built site to a `gh-pages`
+        branch: set **Pages \> Source: Deploy from a branch \> gh-pages
+        / (root)** (with "GitHub Actions" selected the workflow runs
+        green but the site never updates).
+    Every push then builds and publishes. Commit the `Gemfile.lock` from
+    `bundle_install()` -- the workflows cache gems from it. One
+    first-publication quirk: a force-push that replaces the branch
+    history does not match the workflows' `paths` filters, so trigger
+    the first run by hand (Actions \> the workflow \> Run workflow) or
+    with any follow-up push.
+
+Two alternatives on GitHub: the classic branch build (Settings \> Pages
+\> Deploy from a branch) runs Jekyll for you but only with GitHub's
+whitelisted plugin set -- fine for minima, not for al-folio/Chirpy; or
+build locally and push the `_site/` contents to a `gh-pages` branch if
+you want no remote build at all.
+
+**Netlify / Cloudflare Pages**: connect the repository and set the build
+command to `bundle exec jekyll build` with publish directory `_site`
+(both detect Jekyll and suggest exactly this).
+
+**GitLab Pages**: a minimal `.gitlab-ci.yml` that runs `bundle exec
+jekyll build -d public` in a Ruby image and publishes the `public`
+artifact.
+
+**Your own server / anything else**: `build_site()` and copy `_site/`
+over (`rsync -av _site/ server:/var/www/site/`). Static files, no
+runtime.
+
+## How it works
+
+| Where                            | What                                                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `_source/*.Rmd`, `*.qmd`         | posts in R Markdown/Quarto (the source; excluded from Jekyll)                                                       |
+| `_posts/*.md`                    | knitted output -- an artifact, never edit by hand (unless the post has no `_source/` twin: then it *is* the source) |
+| `_pages/`, `_tabs/`, or the root | pages, in the active theme's convention -- edit directly; front matter controls the menu                            |
+| `assets/img/posts/<post>/`       | figures generated by your chunks                                                                                    |
+| `assets/.../main.scss`           | site-local stylesheet holding the managed customization blocks                                                      |
+
+Editing after creation or migration is covered in the getting-started
+vignette (`vignette("jekylldown")`, section 5): where each theme keeps
+pages, identity and data files, and why `_config.yml` edits apply live
+under `serve_site()`.
+
+Prior art: this package packages up the workflow of Yihui Xie's
+[`servr::jekyll()`](https://cran.r-project.org/package=servr) and
+[knitr-jekyll](https://github.com/yihui/blogdown-jekyll), with the API
+mirroring blogdown on purpose. blogdown itself supports Jekyll only in a
+limited way -- essentially the serve-and-reknit loop, with everything
+else (site scaffolding, themes, toolchain, migration) designed for Hugo;
+jekylldown picks up where that support stops.

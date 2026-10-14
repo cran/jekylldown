@@ -1,0 +1,439 @@
+#' Install Ruby and Jekyll into jekylldown's isolated toolchain (Windows)
+#'
+#' Windows has no system package manager to get Ruby from, so this
+#' function does the whole setup: it downloads the portable RubyInstaller
+#' archive (a `.7z`, no graphical installer, no registry entries), unpacks
+#' it under `tools::R_user_dir("jekylldown", "data")/ruby`, and installs
+#' the **jekyll**, **bundler** and **minima** (the default theme) gems
+#' into it. Nothing is installed system-wide and no shell configuration
+#' is touched; uninstall by deleting the data directory. [build_site()],
+#' [serve_site()] and [check()] find this toolchain automatically.
+#'
+#' Unpacking the `.7z` archive needs the \pkg{archive} package
+#' (`install.packages("archive")`).
+#'
+#' The MSYS2 build tools are set up by default (`devkit = TRUE`, via
+#' RubyInstaller's `ridk install`): Jekyll depends on the
+#' \samp{eventmachine} gem, which has no precompiled binary for current
+#' Rubies and must be compiled at install time. `devkit = FALSE` skips
+#' that large download for the rare setups that already have a working
+#' MSYS2 toolchain.
+#'
+#' On Linux and macOS install Ruby with your package manager instead (see
+#' the README's prerequisites); jekylldown picks it up from the `PATH`.
+#'
+#' @param file Optional path to an already-downloaded
+#'   `rubyinstaller-<version>-x64.7z`, for offline installs. Default
+#'   `NULL` downloads the latest release from GitHub. (The release
+#'   lookup uses the GitHub API; on networks where `api.github.com` is
+#'   unreachable, a known-good pinned release is downloaded directly
+#'   from `github.com` instead.)
+#' @param devkit Set up the MSYS2 toolchain (via `ridk install`), which
+#'   gems with C extensions -- including Jekyll's own dependency
+#'   \samp{eventmachine} -- need at install time? Default `TRUE`.
+#' @param version Optional RubyInstaller release to install instead of
+#'   the latest, as tagged upstream (e.g. `"3.3.7-1"`).
+#' @param force Re-download Ruby even when the toolchain directory
+#'   already holds a working one? Default `FALSE`: re-running the
+#'   function reuses the provisioned Ruby and only completes what is
+#'   missing (MSYS2 pieces, gems -- already-installed gems are
+#'   skipped).
+#' @return The path to the installed `jekyll` command, invisibly.
+#' @export
+install_ruby <- function(file = NULL, devkit = TRUE, version = NULL,
+                         force = FALSE) {
+  if (!identical(.Platform$OS.type, "windows")) {
+    cli::cli_abort(c(
+      "Automatic Ruby install is for Windows, which has no package
+       manager to get Ruby from.",
+      "i" = "On Linux/macOS install Ruby (>= 3.0) with your package
+             manager -- see the README's prerequisites section;
+             jekylldown finds it on the {.envvar PATH}."))
+  }
+  if (!requireNamespace("archive", quietly = TRUE)) {
+    cli::cli_abort(c(
+      "The {.pkg archive} package is needed to unpack the RubyInstaller
+       {.file .7z} archive.",
+      "i" = "Run {.code install.packages(\"archive\")} and call
+             {.fn install_ruby} again."))
+  }
+
+  dest <- file.path(jd_data_dir(), "ruby")
+  reuse <- !force && is.null(file) && is.null(version) &&
+    dir.exists(file.path(dest, "bin")) && !is.null(cmd_version("ruby"))
+  if (reuse) {
+    cli::cli_alert_info(
+      "Ruby already provisioned at {.path {dest}} -- reusing it and only
+       completing the toolchain (re-download with {.code force = TRUE}).")
+  } else {
+    if (is.null(file)) {
+      url <- if (!is.null(version)) {
+        ri_pinned_url(version)
+      } else {
+        ri_latest_url()
+      }
+      file <- tempfile(fileext = ".7z")
+      on.exit(unlink(file), add = TRUE)
+      cli::cli_alert_info("Downloading {.url {url}} ...")
+      status <- tryCatch(
+        utils::download.file(url, file, mode = "wb", quiet = TRUE),
+        error = function(e) conditionMessage(e))
+      if (!identical(status, 0L)) {
+        cli::cli_abort(c(
+          "Could not download {.url {url}}
+           ({if (is.character(status)) status else paste('status', status)}).",
+          "i" = "Behind a proxy or firewall? Download the {.file .7z}
+                 archive from {.url https://rubyinstaller.org/downloads/}
+                 in your browser and pass its path as {.arg file}."))
+      }
+    }
+
+    exdir <- tempfile("ruby-install-")
+    on.exit(unlink(exdir, recursive = TRUE), add = TRUE)
+    cli::cli_alert_info("Unpacking (this can take a few minutes) ...")
+    archive::archive_extract(file, dir = exdir)
+    top <- list.dirs(exdir, recursive = FALSE)
+    if (length(top) != 1) {
+      cli::cli_abort("Unexpected archive layout: expected one top-level
+                      directory, found {length(top)}.")
+    }
+
+    if (dir.exists(dest)) unlink(dest, recursive = TRUE)
+    fs::dir_create(dirname(dest))
+    fs::dir_copy(top, dest)
+  }
+
+  if (devkit) {
+    ridk <- find_cmd("ridk")
+    if (is.null(ridk)) {
+      cli::cli_abort("The archive did not contain the {.code ridk} command
+                      needed to set up the MSYS2 toolchain.")
+    }
+    cli::cli_alert_info("Installing the MSYS2 build toolchain (a large
+                         extra download) ...")
+    sc <- shell_cmd(ridk, c("install", "1", "2", "3"))
+    res <- processx::run(sc$cmd, sc$args, env = c("current", jd_env()),
+                         echo = TRUE, error_on_status = FALSE)
+    if (res$status != 0) {
+      cli::cli_abort("{.code ridk install} failed (exit status
+                      {res$status}).")
+    }
+  }
+
+  gem <- find_cmd("gem")
+  if (is.null(gem)) {
+    cli::cli_abort("The archive did not contain a {.code gem} command
+                    under {.path bin/}.")
+  }
+  cli::cli_alert_info("Installing the {.pkg jekyll}, {.pkg bundler} and
+                       {.pkg minima} gems ...")
+  sc <- shell_cmd(gem, c("install", "--conservative", "--no-document",
+                         "jekyll", "bundler", "minima"))
+  res <- processx::run(sc$cmd, sc$args, env = c("current", jd_env()),
+                       echo = TRUE, error_on_status = FALSE)
+  if (res$status != 0) {
+    cli::cli_abort(c(
+      "{.code gem install jekyll bundler minima} failed (exit status
+       {res$status}).",
+      if (!devkit) c("i" = "If the error mentions development tools or a
+                            compiler, re-run with
+                            {.code install_ruby(devkit = TRUE)}.")))
+  }
+
+  version <- cmd_version("jekyll")
+  if (is.null(version)) version <- ""
+  cli::cli_alert_success(
+    "Ruby and Jekyll {version} installed under {.path {dest}}
+     (delete {.path {jd_data_dir()}} to uninstall).")
+  invisible(find_cmd("jekyll"))
+}
+
+# A recent RubyInstaller release known to work with jekylldown's themes,
+# used when the GitHub API is unreachable (some networks resolve
+# github.com, where the archives live, but block api.github.com).
+ri_fallback_version <- "3.3.7-1"
+
+ri_pinned_url <- function(version) {
+  sprintf(paste0("https://github.com/oneclick/rubyinstaller2/releases",
+                 "/download/RubyInstaller-%s/rubyinstaller-%s-x64.7z"),
+          version, version)
+}
+
+# The newest release's archive URL. Tried in order: the GitHub API;
+# the releases/latest page on github.com itself (some networks resolve
+# github.com, where the archives also live, but not api.github.com);
+# the pinned known-good release.
+ri_latest_url <- function() {
+  fetch <- function(url) tryCatch(
+    suppressWarnings(paste(readLines(url, warn = FALSE), collapse = "\n")),
+    error = function(e) NULL)
+
+  api <- fetch(
+    "https://api.github.com/repos/oneclick/rubyinstaller2/releases/latest")
+  if (!is.null(api)) return(ri_pick_asset(api))
+
+  html <- fetch(
+    "https://github.com/oneclick/rubyinstaller2/releases/latest")
+  version <- if (!is.null(html)) ri_tag_version(html)
+  if (length(version)) return(ri_pinned_url(version))
+
+  cli::cli_warn(
+    "Could not reach GitHub to find the latest RubyInstaller release;
+     using the known-good RubyInstaller {ri_fallback_version} instead
+     (pass {.arg version} to choose another one).")
+  ri_pinned_url(ri_fallback_version)
+}
+
+# "RubyInstaller-4.0.6-1" somewhere in the releases/latest page ->
+# "4.0.6-1"; character(0) when no tag is found.
+ri_tag_version <- function(html) {
+  tag <- regmatches(html, regexpr("RubyInstaller-[0-9][0-9.]*-[0-9]+", html))
+  sub("^RubyInstaller-", "", tag)
+}
+
+# Pick the portable .7z asset out of a rubyinstaller2 release JSON.
+# Only the plain archive exists as .7z upstream (the devkit variant
+# ships as an .exe installer only) -- the MSYS2 toolchain is added
+# afterwards with `ridk install`, see install_ruby(devkit = TRUE).
+ri_pick_asset <- function(release_json) {
+  pat <- "https://[^\"]*/rubyinstaller-[0-9][^\"]*-x64[.]7z"
+  url <- regmatches(release_json, regexpr(pat, release_json))
+  if (!length(url)) {
+    cli::cli_abort(
+      "No matching {.file .7z} archive in the latest RubyInstaller
+       release. Download one from
+       {.url https://rubyinstaller.org/downloads/} and pass it as
+       {.arg file}.")
+  }
+  url
+}
+
+#' Install a portable git into jekylldown's isolated toolchain (Windows)
+#'
+#' The one jekylldown step that needs git is [bundle_install()] on a
+#' `Gemfile` that pulls gems straight from git repositories (al-folio's
+#' does) -- Bundler shells out to git for those. This function covers
+#' machines without git: it downloads MinGit, the portable build that
+#' Git for Windows publishes exactly for embedding (a plain `.zip`, no
+#' installer, no registry entries, no admin rights), and unpacks it
+#' under `tools::R_user_dir("jekylldown", "data")/git`, where every
+#' jekylldown-run Ruby command finds it automatically. Nothing is
+#' installed system-wide; delete the data directory to uninstall.
+#'
+#' Like [install_ruby()], the release lookup uses the GitHub API and
+#' falls back to the `releases/latest` page on `github.com` (then to a
+#' pinned known-good release) on networks where `api.github.com` is
+#' unreachable. x86-64 only.
+#'
+#' This is a private copy for the toolchain: it does not appear on your
+#' system `PATH`, so it does not replace a real git installation for
+#' everyday version-control work (for publishing a site with
+#' `git push`, install git from <https://git-scm.com/downloads/>).
+#'
+#' @param file Optional path to an already-downloaded
+#'   `MinGit-<version>-64-bit.zip`, for offline installs. Default `NULL`
+#'   downloads the latest release from GitHub.
+#' @param version Optional Git for Windows release to install instead
+#'   of the latest, in asset notation (e.g. `"2.55.0.3"` for the tag
+#'   `v2.55.0.windows.3`, `"2.47.1"` for `v2.47.1.windows.1`).
+#' @param force Re-download even when the toolchain directory already
+#'   holds a working git? Default `FALSE`.
+#' @return The path to the installed `git` executable, invisibly.
+#' @export
+install_git <- function(file = NULL, version = NULL, force = FALSE) {
+  if (!identical(.Platform$OS.type, "windows")) {
+    cli::cli_abort(c(
+      "Automatic git install is for Windows.",
+      "i" = "On Linux/macOS install git with your package manager;
+             jekylldown finds it on the {.envvar PATH}."))
+  }
+
+  dest <- file.path(jd_data_dir(), "git")
+  exe <- file.path(dest, "cmd", "git.exe")
+  if (!force && is.null(file) && is.null(version) && file.exists(exe)) {
+    cli::cli_alert_info(
+      "git already provisioned at {.path {dest}} -- reusing it
+       (re-download with {.code force = TRUE}).")
+  } else {
+    if (is.null(file)) {
+      url <- if (!is.null(version)) {
+        mg_pinned_url(version)
+      } else {
+        mg_latest_url()
+      }
+      file <- tempfile(fileext = ".zip")
+      on.exit(unlink(file), add = TRUE)
+      cli::cli_alert_info("Downloading {.url {url}} ...")
+      status <- tryCatch(
+        utils::download.file(url, file, mode = "wb", quiet = TRUE),
+        error = function(e) conditionMessage(e))
+      if (!identical(status, 0L)) {
+        cli::cli_abort(c(
+          "Could not download {.url {url}}
+           ({if (is.character(status)) status else paste('status', status)}).",
+          "i" = "Behind a proxy or firewall? Download the MinGit
+                 {.file .zip} from
+                 {.url https://github.com/git-for-windows/git/releases}
+                 in your browser and pass its path as {.arg file}."))
+      }
+    }
+    if (dir.exists(dest)) unlink(dest, recursive = TRUE)
+    fs::dir_create(dest)
+    # MinGit archives have no top-level directory: cmd/, mingw64/ etc.
+    # sit at the root of the zip
+    utils::unzip(file, exdir = dest)
+  }
+
+  if (!file.exists(exe)) {
+    cli::cli_abort("The archive did not contain {.path cmd/git.exe}.")
+  }
+  version_str <- tryCatch(
+    trimws(processx::run(exe, "--version")$stdout),
+    error = function(e) "")
+  cli::cli_alert_success(
+    "{version_str} installed under {.path {dest}} (delete
+     {.path {jd_data_dir()}} to uninstall).")
+  invisible(exe)
+}
+
+# A recent MinGit release known to work, for when GitHub cannot be
+# asked for the latest one.
+mg_fallback_version <- "2.55.0.3"
+
+# Asset-notation version -> download URL. Git for Windows tags releases
+# v<X.Y.Z>.windows.<N>; the asset drops the suffix when N is 1 and
+# appends .N otherwise ("2.47.1" <-> v2.47.1.windows.1, "2.55.0.3" <->
+# v2.55.0.windows.3).
+mg_pinned_url <- function(version) {
+  parts <- strsplit(version, ".", fixed = TRUE)[[1]]
+  tag <- if (length(parts) == 4) {
+    sprintf("v%s.windows.%s", paste(parts[1:3], collapse = "."), parts[4])
+  } else {
+    sprintf("v%s.windows.1", version)
+  }
+  sprintf(paste0("https://github.com/git-for-windows/git/releases",
+                 "/download/%s/MinGit-%s-64-bit.zip"), tag, version)
+}
+
+# The newest MinGit URL: GitHub API, then the releases/latest page on
+# github.com, then the pinned fallback -- same ladder as install_ruby().
+mg_latest_url <- function() {
+  fetch <- function(url) tryCatch(
+    suppressWarnings(paste(readLines(url, warn = FALSE), collapse = "\n")),
+    error = function(e) NULL)
+
+  api <- fetch(
+    "https://api.github.com/repos/git-for-windows/git/releases/latest")
+  if (!is.null(api)) return(mg_pick_asset(api))
+
+  html <- fetch("https://github.com/git-for-windows/git/releases/latest")
+  version <- if (!is.null(html)) mg_tag_version(html)
+  if (length(version)) return(mg_pinned_url(version))
+
+  cli::cli_warn(
+    "Could not reach GitHub to find the latest MinGit release; using
+     the known-good MinGit {mg_fallback_version} instead (pass
+     {.arg version} to choose another one).")
+  mg_pinned_url(mg_fallback_version)
+}
+
+# The plain 64-bit MinGit zip out of a release JSON (never the busybox
+# variant).
+mg_pick_asset <- function(release_json) {
+  pat <- "https://[^\"]*/MinGit-[0-9.]+-64-bit[.]zip"
+  url <- regmatches(release_json, regexpr(pat, release_json))
+  if (!length(url)) {
+    cli::cli_abort(
+      "No MinGit {.file .zip} in the latest Git for Windows release.
+       Download one from
+       {.url https://github.com/git-for-windows/git/releases} and pass
+       it as {.arg file}.")
+  }
+  url
+}
+
+# "v2.55.0.windows.3" somewhere in the releases/latest page -> asset
+# notation "2.55.0.3"; "v2.47.1.windows.1" -> "2.47.1".
+mg_tag_version <- function(html) {
+  tag <- regmatches(html, regexpr(
+    "v[0-9]+[.][0-9]+[.][0-9]+[.]windows[.][0-9]+", html))
+  if (!length(tag)) return(character())
+  m <- regmatches(tag, regexec(
+    "^v([0-9.]+)[.]windows[.]([0-9]+)$", tag))[[1]]
+  if (m[3] == "1") m[2] else paste(m[2], m[3], sep = ".")
+}
+
+#' Install the Quarto CLI into jekylldown's isolated toolchain
+#'
+#' Downloads the latest Quarto release and unpacks it under
+#' `tools::R_user_dir("jekylldown", "data")/quarto`, where [build_site()],
+#' [serve_site()] and [check()] find it automatically. Nothing is installed
+#' system-wide and no shell configuration is touched; uninstall by deleting
+#' that directory. Only needed to write posts in Quarto (`.qmd`) --
+#' see [new_post()].
+#'
+#' Linux x86_64 only for now (the platform jekylldown's isolated toolchain
+#' targets); on other platforms install Quarto from
+#' <https://quarto.org/docs/get-started/> and it is picked up from the
+#' `PATH`.
+#'
+#' @param file Optional path to an already-downloaded
+#'   `quarto-<version>-linux-amd64.tar.gz`, for offline installs. Default
+#'   `NULL` downloads the latest release from GitHub.
+#' @return The path to the installed `quarto` executable, invisibly.
+#' @export
+install_quarto <- function(file = NULL) {
+  sysinfo <- Sys.info()
+  if (!identical(sysinfo[["sysname"]], "Linux") ||
+      !identical(sysinfo[["machine"]], "x86_64")) {
+    cli::cli_abort(c(
+      "Automatic Quarto install currently supports Linux x86_64 only.",
+      "i" = "Install it from {.url https://quarto.org/docs/get-started/};
+             jekylldown finds it on the {.envvar PATH}."))
+  }
+
+  if (is.null(file)) {
+    api <- "https://api.github.com/repos/quarto-dev/quarto-cli/releases/latest"
+    release <- tryCatch(
+      paste(readLines(api, warn = FALSE), collapse = "\n"),
+      error = function(e) cli::cli_abort(
+        "Could not reach GitHub to find the latest Quarto release
+         ({conditionMessage(e)}). Download the Linux tarball yourself and
+         pass it as {.arg file}."))
+    url <- regmatches(release, regexpr(
+      "https://[^\"]*linux-amd64[.]tar[.]gz", release))
+    if (!length(url)) {
+      cli::cli_abort("No Linux x86_64 tarball found in the latest release.")
+    }
+    file <- tempfile(fileext = ".tar.gz")
+    on.exit(unlink(file), add = TRUE)
+    cli::cli_alert_info("Downloading {.url {url}} ...")
+    utils::download.file(url, file, mode = "wb", quiet = TRUE)
+  }
+
+  exdir <- tempfile("quarto-install-")
+  on.exit(unlink(exdir, recursive = TRUE), add = TRUE)
+  utils::untar(file, exdir = exdir)
+  top <- list.dirs(exdir, recursive = FALSE)
+  if (length(top) != 1) {
+    cli::cli_abort("Unexpected tarball layout: expected one top-level
+                    directory, found {length(top)}.")
+  }
+
+  dest <- file.path(jd_data_dir(), "quarto")
+  if (dir.exists(dest)) unlink(dest, recursive = TRUE)
+  fs::dir_create(dirname(dest))
+  fs::dir_copy(top, dest)
+
+  bin <- file.path(dest, "bin", "quarto")
+  if (!file.exists(bin)) {
+    cli::cli_abort("The tarball did not contain {.path bin/quarto}.")
+  }
+  version <- tryCatch(
+    trimws(system2(bin, "--version", stdout = TRUE)[[1]]),
+    error = function(e) "unknown")
+  cli::cli_alert_success(
+    "Quarto {version} installed at {.path {bin}} (delete
+     {.path {dest}} to uninstall).")
+  invisible(bin)
+}

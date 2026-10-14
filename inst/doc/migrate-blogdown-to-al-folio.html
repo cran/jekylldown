@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Migrating from blogdown/Hugo to jekylldown + al-folio</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+<script>// Hide empty <a> tag within highlighted CodeBlock for screen reader accessibility (see https://github.com/jgm/pandoc/issues/6352#issuecomment-626106786) -->
+// v0.0.1
+// Written by JooYoung Seo (jooyoung@psu.edu) and Atsushi Yasumoto on June 1st, 2020.
+
+document.addEventListener('DOMContentLoaded', function() {
+  const codeList = document.getElementsByClassName("sourceCode");
+  for (var i = 0; i < codeList.length; i++) {
+    var linkList = codeList[i].getElementsByTagName('a');
+    for (var j = 0; j < linkList.length; j++) {
+      if (linkList[j].innerHTML === "") {
+        linkList[j].setAttribute('aria-hidden', 'true');
+      }
+    }
+  }
+});
+</script>
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
+
+
+
+<style type="text/css">
+  code {
+    white-space: pre;
+  }
+  .sourceCode {
+    overflow: visible;
+  }
+</style>
+<style type="text/css" data-origin="pandoc">
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Migrating from blogdown/Hugo to jekylldown + al-folio</h1>
+
+
+
+<p><a href="https://github.com/alshedivat/al-folio">al-folio</a> is the de-facto reference theme for academic sites – publications generated from BibTeX, news, CV, and teaching pages as structured data. Hugo has no equivalent, which is the main reason to move a blogdown site to Jekyll. This vignette walks through that migration with jekylldown, keeping your posts in R Markdown throughout.</p>
+<p>al-folio is the vignette’s focus, but <code>migrate_hugo()</code> targets any of the supported themes – <code>theme = &quot;chirpy&quot;</code>, <code>&quot;minimal-mistakes&quot;</code> or <code>&quot;minima&quot;</code> work the same way, with pages, navigation, avatar and social profiles placed in each theme’s own convention (Chirpy <code>_tabs/</code>, Minimal Mistakes <code>_pages/</code> + <code>_data/navigation.yml</code> + the <code>author:</code> sidebar, …). Steps 1, 2 and 4 apply to all of them; step 3 is al-folio-specific.</p>
+<div id="before-you-start" class="section level2">
+<h2>Before you start</h2>
+<ol style="list-style-type: decimal">
+<li><strong>Work on a copy.</strong> <code>migrate_hugo()</code> never writes into the source site, but be conservative anyway: leave your production repository untouched until the new site builds and looks right.</li>
+<li><strong>Diagnose your toolchain:</strong></li>
+</ol>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a>jekylldown<span class="op">::</span><span class="kw">check</span>()</span></code></pre></div>
+<p>A local Ruby/Jekyll is <em>optional</em> for this migration: knitting posts only needs R, and al-folio ships GitHub Actions workflows that build the site remotely. You only need Jekyll (plus <code>bundle_install()</code>, below) for local previews.</p>
+</div>
+<div id="step-1-convert-the-site" class="section level2">
+<h2>Step 1 – convert the site</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="kw">library</span>(jekylldown)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a><span class="kw">migrate_hugo</span>(</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true"></a>  <span class="dt">from  =</span> <span class="st">&quot;path/to/my-hugo-site&quot;</span>,     <span class="co"># blogdown/Hugo site (read-only)</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true"></a>  <span class="dt">to    =</span> <span class="st">&quot;path/to/my-new-site&quot;</span>,      <span class="co"># created; must not exist yet</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true"></a>  <span class="dt">theme =</span> <span class="st">&quot;al-folio&quot;</span>,                 <span class="co"># fetched from GitHub (network needed)</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true"></a>  <span class="dt">only_referenced =</span> <span class="ot">TRUE</span>,             <span class="co"># skip static files nothing links to</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true"></a>  <span class="dt">publications =</span> <span class="st">&quot;bib&quot;</span>,               <span class="co"># the default; papers.bib from the DOIs (see below)</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true"></a>  <span class="dt">theme_color =</span> <span class="st">&quot;red&quot;</span>                 <span class="co"># al-folio accent color (see below)</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true"></a>)</span></code></pre></div>
+<p>The Hugo config (<code>config.toml</code>/<code>.yaml</code>) is read first and drives the migration. What gets converted automatically:</p>
+<ul>
+<li><strong>Posts</strong> under <code>content/post/</code> (also <code>posts/</code>, <code>blog/</code>) are renamed to Jekyll’s <code>YYYY-MM-DD-slug</code> convention. <code>.Rmd</code>/<code>.Rmarkdown</code> sources go to <code>_source/</code> and will be re-knitted by jekylldown; plain <code>.md</code> posts go straight to <code>_posts/</code>. Filename slugs are kept, so post URLs are preserved.</li>
+<li><strong>Front matter</strong> (YAML or TOML) becomes Jekyll YAML: <code>layout: post</code> is added, <code>draft: true</code> becomes <code>published: false</code>, <code>aliases</code> becomes <code>redirect_from</code> (enable the <code>jekyll-redirect-from</code> plugin if you use it), and Hugo-only keys are dropped.</li>
+<li><strong>Page bundle resources</strong> (images next to <code>index.Rmd</code>) are copied to <code>assets/img/posts/&lt;post&gt;/</code> and relative image links are rewritten.</li>
+<li><strong>Menu pages.</strong> Every page referenced by the Hugo menu (<code>[[menu.main]]</code>) – <code>content/publications.md</code>, <code>talks.md</code>, … – becomes an al-folio page in <code>_pages/</code> with the same URL (<code>permalink</code>) and the menu position (<code>nav_order</code>). A menu entry pointing at the posts section repositions the theme’s blog page instead.</li>
+<li><strong>The home page.</strong> <code>content/_index.md</code> becomes the body of al-folio’s <code>about.md</code> landing page; a <code>{{&lt; figure class=&quot;avatar&quot; &gt;}}</code> shortcode turns into the theme’s profile picture.</li>
+<li><strong>Site identity.</strong> Your name (from the home page title or <code>params.author</code>), <code>url</code> (from <code>baseURL</code>) and description are written into <code>_config.yml</code>, including jekyll-scholar’s author-highlighting names.</li>
+<li><strong>Theme demo content is scrubbed</strong>: al-folio’s sample posts, news, projects, books, teachings and the Einstein pages are removed, so the site starts empty instead of generic.</li>
+<li><strong><code>static/</code></strong> is copied to the site root, so absolute URLs like <code>/images/foo.png</code> keep working. With <code>only_referenced = TRUE</code> only files actually referenced by the migrated content (plus favicons) are copied – old Hugo <code>static/</code> folders accumulate junk.</li>
+<li><strong>Shortcodes</strong>: <code>{{&lt; figure &gt;}}</code> and <code>{{&lt; youtube &gt;}}</code> are converted; everything else is left in place and listed in the migration report. A figure’s <code>class</code>/<code>width</code>/<code>height</code> become a kramdown attribute list, and the CSS rules behind those classes are ported from the Hugo theme’s sass (variables resolved) into the new site’s stylesheet, so images keep their original display size instead of rendering at natural size.</li>
+<li><strong>Pandoc image attributes</strong> (<code>{width=100%}</code>) are rewritten as kramdown inline attribute lists (<code>{: width=&quot;100%&quot;}</code>).</li>
+</ul>
+<p>The report printed at the end lists what is left: posts with remaining shortcodes and content <em>not</em> referenced by the Hugo menu (dead pages, custom <code>layouts/</code>) – review that list before assuming it can be dropped.</p>
+</div>
+<div id="step-2-review-the-posts" class="section level2">
+<h2>Step 2 – review the posts</h2>
+<p>Knit everything (no Jekyll needed) and read the output:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="kw">build_site</span>(<span class="st">&quot;path/to/my-new-site&quot;</span>, <span class="dt">local_jekyll =</span> <span class="ot">FALSE</span>)</span></code></pre></div>
+<p>Things worth checking in <code>_posts/*.md</code>:</p>
+<ul>
+<li>Posts using <strong>HTML widgets</strong> (plotly, leaflet, …) render as static Markdown here; widgets that relied on blogdown’s HTML pipeline need rework (e.g. save a static image, or embed the widget’s HTML manually).</li>
+<li>Shortcodes flagged in the report need a manual equivalent (a Liquid include, plain HTML, or just Markdown).</li>
+<li>Draft posts were kept with <code>published: false</code>; delete or finish them.</li>
+<li>Posts needing pandoc-only features – citations (<code>bibliography:</code>), footnotes, cross-references – can opt in with <code>knit_method: pandoc</code> in the front matter (needs rmarkdown + pandoc). New posts can also be written in Quarto (<code>new_post(format = &quot;qmd&quot;)</code>), which brings those features natively via the Quarto CLI.</li>
+</ul>
+</div>
+<div id="step-3-adapt-the-al-folio-configuration" class="section level2">
+<h2>Step 3 – adapt the al-folio configuration</h2>
+<p><code>migrate_hugo()</code> fills in your identity (name, <code>url</code>, description) but al-folio’s rich <code>_config.yml</code> deserves a pass by hand:</p>
+<ul>
+<li>Check <code>baseurl</code> (usually <code>&quot;&quot;</code> for a user page) and browse the config for features you want (Google Analytics, comments, …).</li>
+<li>Social icons live in <code>_data/socials.yml</code>. <code>migrate_hugo()</code> fills it from the profile links found in your Hugo pages (GitHub, LinkedIn, ORCID, Google Scholar, ResearchGate, StackOverflow, …), plus your e-mail address and a CV/resume PDF link – check the migration report for what was recognized and add anything missing by hand.</li>
+<li>Publications: with <code>publications = &quot;bib&quot;</code> (the default) the DOIs on the page are extracted and fetched as BibTeX from doi.org, so al-folio’s jekyll-scholar renders the publications page with the theme’s badges and buttons – deterministic and reproducible (the DOI registry, not a heuristic parser, is the source of truth). Publications without a DOI are listed in the report; add them to <code>_bibliography/papers.bib</code> by hand. <code>publications = &quot;html&quot;</code> migrates your hand-written page as-is instead – that is also the automatic fallback when the page has no DOI or there is no network, but note that a page built around raw HTML (floats, flex <code>&lt;div&gt;</code>s) rarely survives kramdown intact.</li>
+<li>Accent color: al-folio defaults to purple. <code>theme_color = &quot;red&quot;</code> (or any palette name / hex value) sets it at migration time, and <code>set_theme_color()</code> changes it later – it needs the theme gems, so on a first machine run <code>bundle_install()</code> and then <code>set_theme_color()</code>.</li>
+</ul>
+<div id="known-al-folio-gotchas" class="section level3">
+<h3>Known al-folio gotchas</h3>
+<p>Verified with al-folio as of September 2026:</p>
+<ul>
+<li><strong>Jupyter notebooks.</strong> al-folio refuses to build when the <code>jekyll-jupyter-notebook</code> plugin is enabled but <code>jupyter-nbconvert</code> is not on the <code>PATH</code>. Since a freshly migrated site has no <code>.ipynb</code> posts, <code>migrate_hugo()</code> removes the plugin from the <code>Gemfile</code> and from <code>_config.yml</code> for you. If you later want to write posts as notebooks, add both entries back and install Jupyter.</li>
+<li><strong>JavaScript minification.</strong> Terser wants a JS runtime (Node.js). The build succeeds without one – assets are just not minified – so this only matters for production polish. GitHub Actions provides Node, so remote builds are unaffected.</li>
+<li><strong>Dependabot alert on <code>css_parser</code>.</strong> Once the site is on GitHub, Dependabot flags <code>css_parser</code> 1.22.0 in <code>Gemfile.lock</code> (CVE-2026-53727). The alert comes from the theme, not from jekylldown: al-folio’s <code>jekyll-3rd-party-libraries</code> plugin requires a version below 2.0, so bundler cannot move to the fixed 3.0.0 until the plugin allows it. The gem runs only during the build, on your own CSS, so the practical risk is low. You can dismiss the alert; a later <code>bundle_install()</code> picks up the fix once al-folio ships it.</li>
+</ul>
+</div>
+</div>
+<div id="step-4-preview-locally-optional" class="section level2">
+<h2>Step 4 – preview locally (optional)</h2>
+<p>al-folio manages its plugins with Bundler, so install its gems once into jekylldown’s isolated environment with <code>bundle_install(&quot;path/to/my-new-site&quot;)</code>, then serve:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="kw">serve_site</span>(<span class="st">&quot;path/to/my-new-site&quot;</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a><span class="co"># ... edit _source/*.Rmd; saving re-knits and reloads the browser</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true"></a><span class="kw">stop_server</span>(<span class="st">&quot;path/to/my-new-site&quot;</span>)</span></code></pre></div>
+<p>After <code>bundle_install()</code>, <code>build_site()</code> and <code>serve_site()</code> automatically use <code>bundle exec jekyll</code>, so the theme’s plugins are found.</p>
+</div>
+<div id="step-5-deploy-on-github-pages" class="section level2">
+<h2>Step 5 – deploy on GitHub Pages</h2>
+<ol style="list-style-type: decimal">
+<li>Create a repository named <code>youruser.github.io</code> and push the new site to it (including <code>_source/</code> – it is excluded from the Jekyll build but belongs in version control).</li>
+<li>In the repository settings, enable GitHub Pages with <strong>GitHub Actions</strong> as the source: al-folio’s bundled workflow (<code>.github/workflows/deploy.yml</code>) builds and publishes the site on every push.</li>
+<li>Your R workflow from then on: <code>new_post(&quot;Title&quot;, dir = site)</code>, write, <code>build_site(site)</code> (or just knit via <code>build_site(site, local_jekyll = FALSE)</code>), commit, push. No more two-repository setup as with blogdown – the source and the built site live in one repo, built remotely.</li>
+</ol>
+</div>
+<div id="migration-checklist" class="section level2">
+<h2>Migration checklist</h2>
+<ul class="task-list">
+<li><input type="checkbox" disabled></input>
+<code>migrate_hugo()</code> ran clean; skipped posts (if any) handled</li>
+<li><input type="checkbox" disabled></input>
+posts knit with <code>build_site(site, local_jekyll = FALSE)</code></li>
+<li><input type="checkbox" disabled></input>
+shortcodes from the report ported</li>
+<li><input type="checkbox" disabled></input>
+<code>_config.yml</code> reviewed (identity was set; check <code>baseurl</code>, extras)</li>
+<li><input type="checkbox" disabled></input>
+pages not in the Hugo menu (report’s manual list) triaged</li>
+<li><input type="checkbox" disabled></input>
+<code>_data/socials.yml</code> reviewed (filled from your Hugo pages)</li>
+<li><input type="checkbox" disabled></input>
+publications page: migrated version kept, or <code>_bibliography/papers.bib</code> filled instead</li>
+<li><input type="checkbox" disabled></input>
+repo pushed, GitHub Actions build green</li>
+<li><input type="checkbox" disabled></input>
+old site archived (not deleted) once the new one is live</li>
+</ul>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
